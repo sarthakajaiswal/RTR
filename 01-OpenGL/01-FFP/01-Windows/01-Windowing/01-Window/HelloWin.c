@@ -41,7 +41,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
         CW_USEDEFAULT, 
         CW_USEDEFAULT, 
         CW_USEDEFAULT, 
-        NULL, 
+        NULL,   // Jiska koi nahi uska to khuda hai yaaro 
         NULL, 
         hInstance, 
         NULL
