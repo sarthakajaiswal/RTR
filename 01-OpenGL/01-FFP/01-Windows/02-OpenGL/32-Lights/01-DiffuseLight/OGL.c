@@ -28,8 +28,8 @@ DWORD dwstyle;
 WINDOWPLACEMENT wpPrev;
 
 //OpenGL related variables
-HDC ghdc = NULL; 
-HGLRC ghrc = NULL; 
+HDC ghdc = NULL; //HDC - Handle to Device Context
+HGLRC ghrc = NULL; // HGLRC - Handle to Graphics Library Rendering Context
 
 // variables related to File I/O
 char gszLogFileName[] = "Log.txt";
@@ -40,6 +40,17 @@ BOOL gbActiveWindow = FALSE;
 
 // Exit keypress related
 BOOL gbEscapeKeyIsPressed = FALSE;
+
+// rotation variables 
+GLfloat angleCube = 0.0f;
+
+// lights 
+GLfloat lightAmbient[] = {0.5f, 0.5f, 0.5f, 1.0f}; // grey 
+GLfloat lightDiffuse[] = {1.0f, 1.0f, 1.0f, 1.0f}; // white  
+GLfloat lightPosition[] = {0.0f, 0.0f, 2.0f, 1.0f};  // x, y, z, w 
+													// w == 1 -> positional light 
+													// w == 0 -> directional light 
+BOOL bLight = FALSE; 
 
 // Entry-point function
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevinstance, LPSTR lpszCmdLine, int iCmdShow)
@@ -85,6 +96,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevinstance, LPSTR lpszCmdLi
 	wndclass.lpszMenuName = NULL;
 	wndclass.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(MYICON));
 
+	// *** Registration of Window Class ***
 	RegisterClassEx(&wndclass);
 
 	hwnd = CreateWindowEx(WS_EX_APPWINDOW,
@@ -99,13 +111,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevinstance, LPSTR lpszCmdLi
 						  NULL,
 						  hInstance,
 						  NULL);
-
 	ghwnd = hwnd;
 
-	// show window
 	ShowWindow(hwnd, iCmdShow);
 
-	// Paint background of window
 	UpdateWindow(hwnd);
 
 	// Initialize
@@ -167,7 +176,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevinstance, LPSTR lpszCmdLi
 // Callback function
 LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
 {
-	// function declaration 
+	// function declaration/prototypes
 	void toggleFullScreen(void);
 
 	// code
@@ -198,7 +207,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
 	case WM_KEYDOWN:
 		switch (wParam)
 		{
-		case VK_ESCAPE: 
+		case VK_ESCAPE: // VK - Virtual Keycode
 			gbEscapeKeyIsPressed = TRUE;
 			break;
 
@@ -224,6 +233,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
 			}
 
 			break;
+
+		case 'L': 
+		case 'l': 
+			if(bLight == FALSE) 
+			{
+				bLight = TRUE; 
+				glEnable(GL_LIGHTING); 
+			}
+			else 
+			{
+				bLight = FALSE; 
+				glDisable(GL_LIGHTING); 
+			}
+			break; 
 
 		default:
 			break;
@@ -272,19 +295,20 @@ void toggleFullScreen(void)
 		SetWindowPlacement(ghwnd, &wpPrev);
 		SetWindowLong(ghwnd, GWL_STYLE, dwstyle | WS_OVERLAPPED); // '|' adds style , '~' removes style
 		SetWindowPos(ghwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED);
+		
 		ShowCursor(TRUE);
 	}
 }
 
 int initialize(void)
 {
+    // local function declarations 
+	void resize(int, int);
+
 	// variable declarations
 	PIXELFORMATDESCRIPTOR pfd;
 	int iPixelFormatIndex = 0;
 
-	void resize(int, int);
-
-		
 	// code
 	// Pixel Format Descriptor initialisation
 	ZeroMemory((void *)&pfd, sizeof(PIXELFORMATDESCRIPTOR));
@@ -297,6 +321,7 @@ int initialize(void)
 	pfd.cGreenBits = 8;
 	pfd.cBlueBits = 8;
 	pfd.cAlphaBits = 8;
+    pfd.cDepthBits = 32; // in mobile this value is 24, should be multiple of 8 and <= cColorBits 
 	
 	// getdc
 	ghdc = GetDC(ghwnd);
@@ -337,8 +362,25 @@ int initialize(void)
 	}
 
 	// OpenGL code starts here ...
+    // depath related code 
+    glShadeModel(GL_SMOOTH); // rang detanna / fragment tayar krtanna smoothness cha vichar kr 
+    glClearDepth(1.0f);     // glClear() call kelyavr, depth buffer chi value 1 ne clear krjo 
+    glEnable(GL_DEPTH_TEST); // depth test enabled 
+    glDepthFunc(GL_LEQUAL); // tya tya fragments na paas kr jya framgmets chya depth chi value glClear() madhe dilelya value shi <= asel 
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST); 
+                            // openGL la hint deto jevha perspective projection mule, depth mule velevaakade distil tr te tu adjust/correction kr nicest approach vaprun 
+
 	// Instruct OpenGl to choose the colour to clear the screen
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+	// light configuration 
+	glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient); 
+							// light type, 
+							// konti propery configure karachi 
+							// kontya value ne configure karachi
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse); 
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPosition); 
+	glEnable(GL_LIGHT0); // configure kelela light enable kra 
 
 	// Warmup resize
 	resize(WIN_WIDTH, WIN_HEIGHT);
@@ -377,35 +419,63 @@ void display(void)
 {
 	// code
 	// Clear OpenGL buffers
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// Set Matrix to Model View mode
 	glMatrixMode(GL_MODELVIEW);
-
-	// Set to Identity Matrix
 	glLoadIdentity();
 
-    // Translate triangle backwards by z
-    gluLookAt(
-		0.0f, 0.0f, 3.0f, 
-        0.0f, 0.0f, 0.0f, 
-        0.0f, 1.0f, 0.0f 
-    ); 
-	glTranslatef(0.0f, 0.0f, -3.0f);
+	glTranslatef(0.0f, 0.0f, -8.0f);
+	glRotatef(angleCube, 1.0f, 0.0f, 0.0f); 
+	glRotatef(angleCube, 0.0f, 1.0f, 0.0f); 
+	glRotatef(angleCube, 0.0f, 0.0f, 1.0f); 
+	// glRotatef(angleCube, 1.0f, 1.0f, 1.0f); 
 
-	// Triangle drawing code
-	glBegin(GL_TRIANGLES);
+	// cube drawing code
+	glBegin(GL_QUADS); 
 
-	glColor3f(1.0f, 0.0f, 0.0f);
-	glVertex3f(0.0f, 1.0f, 0.0f); 
+	// front face /* front-> 1 */ 
+	glNormal3f(0.0f, 0.0f, 1.0f); 
+	glVertex3f(1.0f, 1.0f, 1.0f); // right top /* right->1, top->1 */ 
+	glVertex3f(-1.0f, 1.0f, 1.0f);	// left top /* left->-1, top->1 */ 
+	glVertex3f(-1.0f, -1.0f, 1.0f);  // left bottom /* left->-1, bottom->-1 */ 
+	glVertex3f(1.0f, -1.0f, 1.0f); // right bottom /* right->1, bottom->-1 */ 
 
-	glColor3f(0.0f, 1.0f, 0.0f);
-	glVertex3f(-1.0f, -1.0f, 0.0f);	
+	// right face 
+	glNormal3f(1.0f, 0.0f, 0.0f); 
+	glVertex3f(1.0f, 1.0f, -1.0f); 	// right top 
+	glVertex3f(1.0f, 1.0f, 1.0f);	// left top 
+	glVertex3f(1.0f, -1.0f, 1.0f);	// left bottom 
+	glVertex3f(1.0f, -1.0f, -1.0f); // right bottom  
 
-	glColor3f(0.0f, 0.0f, 1.0f);
-	glVertex3f(1.0f, -1.0f, 0.0f);	
+	// back face 
+	glNormal3f(0.0f, 0.0f, -1.0f); 
+	glVertex3f(-1.0f, 1.0f, -1.0f);	 // right top 
+	glVertex3f(1.0f, 1.0f, -1.0f);	 // left top 
+	glVertex3f(1.0, -1.0, -1.0f); 	 // left bottom 
+	glVertex3f(-1.0f, -1.0f, -1.0f); // right bottom  
 
-	glEnd();
+	// left face 
+	glNormal3f(-1.0f, 0.0f, 0.0f); 
+	glVertex3f(-1.0f, 1.0f, 1.0f);	// right top 
+	glVertex3f(-1.0f, 1.0f, -1.0f);// left top 
+	glVertex3f(-1.0f, -1.0f, -1.0f); // left bottom 
+	glVertex3f(-1.0f, -1.0f, 1.0f); // right bottom 
+
+	// top face 
+	glNormal3f(0.0f, 1.0f, 0.0f); 
+	glVertex3f(1.0f, 1.0f, -1.0f); 	// right top 
+	glVertex3f(-1.0f, 1.0f, -1.0f);	// left top 
+	glVertex3f(-1.0f, 1.0f, 1.0f);	// left bottom 
+	glVertex3f(1.0f, 1.0f, 1.0f);   // right bottom 
+
+	// bottom face 
+	glNormal3f(0.0f, -1.0f, 0.0f); 
+	glVertex3f(1.0f, -1.0f, 1.0f);	// right top 
+	glVertex3f(-1.0f, -1.0f, 1.0f); // left top 
+	glVertex3f(-1.0f, -1.0f, -1.0f);	// left bottom 
+	glVertex3f(1.0f, -1.0f, -1.0f); 	// right bottom 
+	
+	glEnd(); 
 	
 	// Swap the buffers
 	SwapBuffers(ghdc);
@@ -414,6 +484,12 @@ void display(void)
 void update(void)
 {
 	// code
+	angleCube = angleCube + 0.025f;
+
+	if (angleCube >= 360.0f)
+	{
+		angleCube = angleCube - 360.0f;
+	}
 }
 
 void uninitialize(void)
@@ -423,16 +499,12 @@ void uninitialize(void)
 	void toggleFullScreen(void);
 		
 	// code
-
-	// If iser is exiting FullScreen, then restore screen/window
-
 	if ( gbFullScreen == TRUE)
 	{
 		toggleFullScreen();
 	}
 	gbFullScreen = FALSE;
 
-	// Make hdc as current context by releasing rendering context as current context
 	if (wglGetCurrentContext() == ghrc)
 	{
 		wglMakeCurrent(NULL, NULL);
@@ -459,8 +531,6 @@ void uninitialize(void)
 		DestroyWindow(ghwnd);
 		ghwnd = NULL;
 	}
-
-
 
 	// close the file
 	if (gpFile)
