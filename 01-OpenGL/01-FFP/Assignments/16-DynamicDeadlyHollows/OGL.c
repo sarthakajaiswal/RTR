@@ -1,0 +1,565 @@
+// standard header files 
+#include <Windows.h> 
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <math.h> 
+
+// openGL related header files 
+#include <gl\GL.h> 
+
+// custom header files 
+#include "OGL.h" 
+
+// standard libraries 
+#pragma comment(lib, "user32.lib") 
+#pragma comment(lib, "gdi32.lib") 
+
+// openGL related libraries 
+#pragma comment(lib, "openGL32.lib")
+
+// macros 
+#define WIN_WIDTH   800 
+#define WIN_HEIGHT  600 
+#define DEG2RAD (3.14 / 180.0)
+
+#define DIFF(a, b) ((a > b) ? (a-b) : (b-a))
+
+// global variable declarations 
+LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);  
+
+// global variable declarations 
+// variables related to full-screen 
+BOOL gbFullScreen = FALSE; 
+HWND ghwnd = NULL; 
+DWORD dwStyle; 
+WINDOWPLACEMENT wpPrev; 
+
+// variable related to file-IO 
+char gszLogFileName[] = "log.txt"; 
+FILE *gpFile = NULL; 
+
+// active Window related variables 
+BOOL gbActiveWindow = FALSE; 
+
+// exit key pressed related 
+BOOL gbEscapeKeyIsPressed = FALSE; 
+
+// OpenGL related global variables 
+HDC ghdc = NULL; 
+HGLRC ghrc = NULL; 
+
+// object translation and rotation variables 
+float txTriangle = -1.2f, tyTriangle = -1.2f; 
+float deltaTxTriangle, deltaTyTriangle; 
+float ryTriangle = 0.0f; 
+
+float txCircle = 1.2f, tyCircle = -1.2f; 
+float deltaTxCircle, deltaTyCircle; 
+float ryCircle; 
+
+float tyLine = 1.4f;
+float deltaTyLine; 
+
+// entry-point function 
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int iCmdShow) 
+{
+    // local function declarations 
+    int initialize(void); 
+    void display(void); 
+    void update(void); 
+    void uninitialize(void); 
+
+    // variable declarations 
+    static TCHAR szClassName[] = TEXT("The Standard Window"); 
+
+    MSG msg; 
+    WNDCLASSEX wnd; 
+    HWND hwnd; 
+
+    BOOL bDone = FALSE; 
+
+    // code 
+    // create log file 
+    gpFile = fopen(gszLogFileName, "w"); 
+    if(gpFile == NULL) 
+    {
+        MessageBox(NULL, TEXT("Log file creation failed"), TEXT("File Error"), MB_OK); 
+        exit(0); 
+    }
+    else 
+    {
+        fprintf(gpFile, "Program started Successfully"); 
+    }
+
+    ZeroMemory((void*)&wnd, sizeof(WNDCLASSEX)); 
+    ZeroMemory((void*)&msg, sizeof(MSG)); 
+
+    // window class initialization
+    wnd.cbSize = sizeof(WNDCLASSEX); 
+    wnd.cbClsExtra = 0; 
+    wnd.cbWndExtra = 0; 
+    wnd.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH); 
+    wnd.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(MYICON)); 
+    wnd.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(MYICON));
+    wnd.hCursor = LoadCursor(NULL, IDC_ARROW); 
+    wnd.lpfnWndProc = WndProc; 
+    wnd.hInstance = hInstance; 
+    wnd.lpszClassName = szClassName; 
+    wnd.lpszMenuName = NULL; 
+
+    // window class registration 
+    RegisterClassEx(&wnd); 
+
+    // create window 
+    hwnd = CreateWindowEx(
+                WS_EX_APPWINDOW, 
+                szClassName, 
+                TEXT("Sarthak Ayodhyaprasad Jaiswal"), 
+                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 
+                (GetSystemMetrics(SM_CXSCREEN)/2 - WIN_WIDTH/2), 
+                (GetSystemMetrics(SM_CYSCREEN)/2 - WIN_HEIGHT/2),  
+                WIN_WIDTH, 
+                WIN_HEIGHT, 
+                NULL, 
+                NULL, 
+                hInstance, 
+                NULL 
+            ); 
+
+    ghwnd = hwnd; 
+
+    // show window 
+    ShowWindow(hwnd, iCmdShow); 
+
+    // update window 
+    UpdateWindow(hwnd); 
+
+    // initialize 
+    int result = initialize(); 
+    if(result != 0) 
+    {
+        fprintf(gpFile, "initialize() failed\n"); 
+        DestroyWindow(hwnd); 
+        hwnd = NULL; 
+    }
+    else 
+    {
+        fprintf(gpFile, "initialize() completed successfully\n"); 
+    }
+
+    SetForegroundWindow(hwnd); 
+    SetFocus(hwnd); 
+
+    // game loop 
+    while(bDone == FALSE) 
+    {
+        if(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) 
+        {
+            if(msg.message == WM_QUIT) 
+            {
+                bDone = TRUE; 
+            }
+            else 
+            {
+                TranslateMessage(&msg); 
+                DispatchMessage(&msg); 
+            }
+        }
+        else 
+        {
+            if(gbActiveWindow == TRUE) 
+            {
+                if(gbEscapeKeyIsPressed == TRUE) 
+                {
+                    bDone = TRUE; 
+                }
+
+                // render 
+                display(); 
+
+                // update 
+                update(); 
+            }
+        }
+    }
+
+    // uninitialize 
+    uninitialize(); 
+
+    return ((int)msg.wParam); 
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
+{
+    // local function declarations 
+    void toggleFullScreen(void); 
+    void resize(int, int); 
+    void uninitialize(void); 
+
+    // code 
+    switch(uMsg) 
+    {
+        case WM_CREATE: 
+            ZeroMemory((void*)&wpPrev, sizeof(WINDOWPLACEMENT)); 
+            wpPrev.length = sizeof(WINDOWPLACEMENT); 
+            break; 
+
+        case WM_SETFOCUS: 
+            gbActiveWindow = TRUE; 
+            break; 
+
+        case WM_KILLFOCUS: 
+            gbActiveWindow = FALSE; 
+            break; 
+
+        case WM_ERASEBKGND: 
+            return (0); 
+
+        case WM_SIZE: 
+            resize(LOWORD(lParam), HIWORD(lParam)); 
+            break; 
+
+        case WM_KEYDOWN: 
+            switch(wParam) 
+            {
+                case VK_ESCAPE: 
+                    gbEscapeKeyIsPressed = TRUE; 
+                    break; 
+
+                default: 
+                    break; 
+            }
+            break; 
+
+        case WM_CHAR: 
+            switch(wParam) 
+            {
+                case 'f': 
+                case 'F': 
+                    if(gbFullScreen == FALSE) 
+                    {
+                        toggleFullScreen(); 
+                        gbFullScreen = TRUE; 
+                    }
+                    else 
+                    {
+                        toggleFullScreen(); 
+                        gbFullScreen = FALSE; 
+                    }
+                    break; 
+
+                default: 
+                    break; 
+            }
+            break; 
+
+        case WM_CLOSE: 
+            uninitialize(); 
+            break; 
+
+        case WM_DESTROY: 
+            PostQuitMessage(0); 
+            break; 
+
+        default: 
+            break; 
+    }
+
+    return (DefWindowProc(hwnd, uMsg, wParam, lParam)); 
+}
+
+void toggleFullScreen(void) 
+{
+    // variable declarations 
+    MONITORINFO mi; 
+
+    // code 
+    if(gbFullScreen == FALSE) 
+    {
+        dwStyle = GetWindowLong(ghwnd, GWL_STYLE); 
+
+        if(dwStyle & WS_OVERLAPPEDWINDOW) 
+        {
+            ZeroMemory((void*)&mi, sizeof(MONITORINFO)); 
+            mi.cbSize = sizeof(MONITORINFO); 
+
+            if(GetWindowPlacement(ghwnd, &wpPrev) && GetMonitorInfo(MonitorFromWindow(ghwnd, MONITORINFOF_PRIMARY), &mi)) 
+            {
+                SetWindowLong(ghwnd, GWL_STYLE, dwStyle & ~WS_OVERLAPPEDWINDOW); 
+
+                SetWindowPos(
+                    ghwnd, 
+                    HWND_TOP, 
+                    mi.rcMonitor.left, 
+                    mi.rcMonitor.top, 
+                    mi.rcMonitor.right - mi.rcMonitor.left, 
+                    mi.rcMonitor.bottom - mi.rcMonitor.top, 
+                    SWP_NOZORDER | SWP_FRAMECHANGED 
+                ); 
+            }
+        }
+
+        ShowCursor(FALSE); 
+    }
+    else 
+    {
+        SetWindowPlacement(ghwnd, &wpPrev); 
+        SetWindowLong(ghwnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW); 
+        SetWindowPos(
+            ghwnd, 
+            HWND_TOP, 
+            0, 0, 0, 0, 
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOZORDER | SWP_FRAMECHANGED
+        ); 
+        ShowCursor(TRUE); 
+    }
+}
+
+int initialize(void) 
+{
+    PIXELFORMATDESCRIPTOR pfd; 
+    int iPixelFormatIndex; 
+
+    // code 
+    ZeroMemory((void*)&pfd, sizeof(PIXELFORMATDESCRIPTOR)); 
+    pfd.nSize = sizeof(PIXELFORMATDESCRIPTOR); 
+    pfd.nVersion = 1; 
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER; 
+    pfd.iPixelType = PFD_TYPE_RGBA; 
+    pfd.cColorBits = 32; 
+    pfd.cRedBits = 8; 
+    pfd.cGreenBits = 8;  
+    pfd.cBlueBits = 8; 
+    pfd.cAlphaBits = 8; 
+
+    ghdc = GetDC(ghwnd); 
+    if(ghdc == NULL) 
+    {
+        fprintf(gpFile, "GetDC() failed\n"); 
+        return (-1); 
+    }
+
+    iPixelFormatIndex = ChoosePixelFormat(ghdc, &pfd); 
+    if(iPixelFormatIndex == 0) 
+    {
+        fprintf(gpFile, "ChoosePixelFormat() failed\n"); 
+        return (-2); 
+    }
+
+    if(SetPixelFormat(ghdc, iPixelFormatIndex, &pfd) == FALSE) 
+    {
+        fprintf(gpFile, "iPixelFormatIndex() failed\n"); 
+        return (-3); 
+    }
+
+    ghrc = wglCreateContext(ghdc); 
+    if(ghrc == NULL) 
+    {
+        fprintf(gpFile, "wglCreateContext() failed\n"); 
+        return (-4); 
+    }
+
+    if(wglMakeCurrent(ghdc, ghrc) == FALSE) 
+    {
+        fprintf(gpFile, "wglMakeCurrent() failed\n"); 
+        return (-5); 
+    }
+
+    // ********** FROM HERE OPENGL CODE STARTS ************ 
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); 
+
+    // // initializing object translation variables 
+    // /* This setting is done so that each object takes same time to reach at its position*/
+    // deltaTxCircle = DIFF(txCircle, 1.0) / 25.0f; 
+    // deltaTyCircle = DIFF(tyCircle, 1.0) / 25.0f; 
+
+    // deltaTxTriangle = DIFF(txTriangle, 1.0) / 25.0f; 
+    // deltaTyTriangle = DIFF(tyTriangle, 1.0) / 25.0f; 
+
+    // deltaTyLine = DIFF(tyLine, 1.0) / 25.0; 
+
+    return (0); 
+}
+
+void resize(int width, int height) 
+{
+    if(height <= 0) 
+    {
+        height = 1; 
+    }
+
+    glViewport(0, 0, (GLsizei)width, (GLsizei)height); 
+}
+
+void display(void) 
+{
+    // function declarations 
+    void drawTriangle(float distanceBetweenCenterAndVertex); 
+    void drawCircle(float cx, float cy, float radius); 
+    void drawLine(float x1, float y1, float x2, float y2); 
+
+    // variable declarations 
+    float triangleCenterX = 0.0f, triangleCenterY = 0.0f; 
+
+    // triangle related variables 
+    float distanceBetweenCenterAndVertexOfTriangle = 0.5f; 
+    float triangleApexX, triangleApexY; 
+    float triangleLeftX, triangleLeftY; 
+    float triangleRightX, triangleRightY; 
+    float theta; 
+
+    // circle related variables 
+    float incircleRadius; // radius of inscribed circle 
+    float incircleCenterX; 
+    float incircleCenterY; 
+
+    // code 
+    glClear(GL_COLOR_BUFFER_BIT); 
+
+    // calculating vertice co-ordinates of equilateral traingle using formula 
+    triangleApexX = triangleCenterX + (distanceBetweenCenterAndVertexOfTriangle * cos(90.0 * DEG2RAD)); 
+    triangleApexY = triangleCenterY + (distanceBetweenCenterAndVertexOfTriangle * sin(90.0 * DEG2RAD)); 
+
+    triangleLeftX = triangleCenterX + (distanceBetweenCenterAndVertexOfTriangle * cos(210.0 * DEG2RAD)); 
+    triangleLeftY = triangleCenterY + (distanceBetweenCenterAndVertexOfTriangle * sin(210.0 * DEG2RAD)); 
+    
+    triangleRightX = triangleCenterX + (distanceBetweenCenterAndVertexOfTriangle * cos(330.0 * DEG2RAD)); 
+    triangleRightY = triangleCenterY + (distanceBetweenCenterAndVertexOfTriangle * sin(330.0 * DEG2RAD)); 
+ 
+    glPushMatrix(); 
+    {
+        glTranslatef(txTriangle, tyTriangle, 0.0f); 
+        glRotatef(ryTriangle, 0.0, 1.0, 0.0); 
+
+        glColor3f(1.0f, 1.0f, 1.0f); 
+        glBegin(GL_LINE_LOOP); 
+        glVertex3f(triangleApexX + triangleCenterX, triangleApexY + triangleCenterY, 0.0f); 
+        glVertex3f(triangleLeftX + triangleCenterX, triangleLeftY + triangleCenterY, 0.0f); 
+        glVertex3f(triangleRightX + triangleCenterX, triangleRightY + triangleCenterY, 0.0f); 
+        glEnd(); 
+    } 
+    glPopMatrix(); 
+
+    float baseCentreX = ((triangleRightX + triangleLeftX)/2.0f); // midpoint formula 
+    float baseCentreY = ((triangleRightY + triangleLeftY)/2.0f); // midpoint formula 
+    incircleRadius = sqrt(((baseCentreX-triangleCenterX) * (baseCentreX-triangleCenterX)) + ((baseCentreY-triangleCenterY) * (baseCentreY-triangleCenterY))); // distance formula (incenter = distance between center and midpoint of base)
+
+    glPushMatrix(); 
+    {
+        glTranslatef(txCircle, tyCircle, 0.0f); 
+        glRotatef(ryCircle, 0.0, 1.0, 0.0); 
+
+        glColor3f(1.0f, 1.0f, 0.0f); 
+        drawCircle(triangleCenterX, triangleCenterY, incircleRadius); 
+    } 
+    glPopMatrix(); 
+    
+    glPushMatrix(); 
+    {
+        glTranslatef(0.0f, tyLine, 0.0f); 
+        glColor3f(1.0f, 0.5f, 0.25f);
+        drawLine(triangleApexX, triangleApexY, baseCentreX, baseCentreY); 
+    } 
+    glPopMatrix(); 
+
+    SwapBuffers(ghdc); 
+}
+
+void update(void) 
+{
+    //code 
+    if(txTriangle < 0.0f && tyTriangle < 0.0f)
+    {
+        tyTriangle += 0.0005;
+        txTriangle += 0.0005;  
+    }
+
+    if(txTriangle >= 0.0 && txCircle > 0.0 && tyCircle < 0.0) 
+    {
+        txCircle -= 0.0005; 
+        tyCircle += 0.0005; 
+    }
+
+    if(txCircle <= 0.0f && tyLine >= 0.0f)
+        tyLine -= 0.0005f; 
+
+    if(ryTriangle >= 360.0f) 
+        ryTriangle = 0; 
+    ryTriangle += 0.1f; 
+
+    if(ryCircle <= 0.0f)
+        ryCircle = 360.0f; 
+    ryCircle -= 0.12f; 
+}
+
+void drawCircle(float cx, float cy, float radius) 
+{
+    // variable declarations 
+    float xOnCircumference, yOnCircumference; 
+    float theta; 
+
+    // code 
+    glColor3f(1.0f, 1.0f, 0.0f); 
+    glBegin(GL_LINE_LOOP); 
+    for(float angle = 0.0f; angle < 360; angle = angle + 1) 
+    {
+        theta = angle * DEG2RAD; 
+        xOnCircumference = cx + (radius * cos(theta)); 
+        yOnCircumference = cy + (radius * sin(theta)); 
+
+        glVertex3f(xOnCircumference, yOnCircumference, 0.0f); 
+    }
+    glEnd(); 
+}
+
+void drawLine(float x1, float y1, float x2, float y2) 
+{
+    glBegin(GL_LINES); 
+    glVertex3f(x1, y1, 0.0f); 
+    glVertex3f(x2, y2, 0.0f); 
+    glEnd(); 
+}
+
+void uninitialize(void) 
+{
+    // function declarations 
+    void toggleFullScreen(void); 
+
+    // code 
+    if(gbFullScreen == TRUE) 
+    {
+        toggleFullScreen(); 
+        gbFullScreen = FALSE; 
+    }
+
+    if(wglGetCurrentContext() == ghrc) 
+    {
+        wglMakeCurrent(NULL, NULL); 
+    }
+
+    if(ghrc) 
+    {
+        wglDeleteContext(ghrc); 
+        ghrc = NULL; 
+    }
+
+    if(ghdc) 
+    {
+        ReleaseDC(ghwnd, ghdc); 
+        ghdc = NULL; 
+    }
+
+    if(ghwnd) 
+    {
+        DestroyWindow(ghwnd); 
+        ghwnd = NULL; 
+    }
+
+    if(gpFile) 
+    {
+        fprintf(gpFile, "Program Terminated Successfully"); 
+        fclose(gpFile); 
+        gpFile = NULL; 
+    }
+}
+

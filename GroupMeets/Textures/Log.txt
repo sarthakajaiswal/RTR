@@ -1,0 +1,4 @@
+Programme Started Successfully!
+Image loaded successfully: tree.png (3072X3072)
+Initialize() Completed Successfully.
+Programme Terminated Successfully.

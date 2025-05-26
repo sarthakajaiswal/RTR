@@ -1,0 +1,16 @@
+int result = initialize(); 
+if(result != 0) 
+{
+    fprintf(gpFile, "initialize() failed"); 
+    DestroyWindow(hwnd); 
+    hwnd = NULL; 
+}
+else
+{
+    fprintf(gpFile, "initialize() successfull"); 
+}
+
+SetForegroundWindow(); 
+SetFocus(); 
+
+Here if initialize() fails why dont we return after Destroying Window ? 

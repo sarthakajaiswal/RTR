@@ -1,0 +1,2 @@
+Program started successfully
+initialize() completed successfullyProgram terminated successfully.

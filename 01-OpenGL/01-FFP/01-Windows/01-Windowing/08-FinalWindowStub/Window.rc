@@ -1,0 +1,3 @@
+#include "Window.h" 
+
+MYICON icon icon.ico  // icon.icon या फाईल पासून icon resource तयार कर आणि त्याला MYICON असं नाव दे  
